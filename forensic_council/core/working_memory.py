@@ -280,11 +280,16 @@ class WorkingMemory:
         if data is None:
             raise ValueError(f"No working memory found for {session_id}/{agent_id}")
         
-        # Parse JSON
-        if isinstance(data, bytes):
-            data = data.decode("utf-8")
+        # Parse JSON - handle both string and dict responses
+        if isinstance(data, dict):
+            state_dict = data
+        elif isinstance(data, bytes):
+            state_dict = json.loads(data.decode("utf-8"))
+        elif isinstance(data, str):
+            state_dict = json.loads(data)
+        else:
+            state_dict = json.loads(data)
         
-        state_dict = json.loads(data)
         state = WorkingMemoryState.from_dict(state_dict)
         
         # Log to custody logger
