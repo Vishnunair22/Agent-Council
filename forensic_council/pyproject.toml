@@ -29,6 +29,11 @@ dependencies = [
     "imagehash>=4.3",
     # Metadata tools
     "timezonefinder>=6.2",
+    # Audio processing tools
+    "librosa>=0.10",
+    "soundfile>=0.12",
+    # Video processing tools
+    "opencv-python>=4.8",
 ]
 
 [project.optional-dependencies]

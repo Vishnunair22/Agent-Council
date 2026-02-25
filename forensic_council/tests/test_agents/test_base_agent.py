@@ -171,7 +171,7 @@ class TestAgent1Image:
         
         assert registry is not None
         tools = registry.list_tools()
-        assert len(tools) == 7  # 7 tools for Agent 1
+        assert len(tools) == 8  # 8 tools for Agent 1 (updated with real tools)
         
         tool_names = {t.name for t in tools}
         assert "ela_full_image" in tool_names
