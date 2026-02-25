@@ -66,11 +66,14 @@ def mock_working_memory():
     """Create a mock working memory."""
     memory = AsyncMock(spec=WorkingMemory)
     
-    # Default state
+    # Default state with COMPLETE task to avoid HITL triggers
     default_state = WorkingMemoryState(
         session_id=uuid.uuid4(),
         agent_id="test_agent",
-        tasks=[],
+        tasks=[Task(
+            description="Test task",
+            status=TaskStatus.COMPLETE
+        )],
         current_iteration=0,
     )
     
@@ -96,6 +99,23 @@ def tool_registry():
     registry.register("fail", fail_tool, "Failing tool")
     
     return registry
+
+
+@pytest.fixture
+def engine(
+    self, agent_id, session_id, iteration_ceiling,
+    mock_working_memory, mock_custody_logger, mock_redis
+):
+    """Create a ReAct loop engine with short HITL timeout for tests."""
+    return ReActLoopEngine(
+        agent_id=agent_id,
+        session_id=session_id,
+        iteration_ceiling=iteration_ceiling,
+        working_memory=mock_working_memory,
+        custody_logger=mock_custody_logger,
+        redis_client=mock_redis,
+        hitl_timeout=0.1  # Very short timeout for tests
+    )
 
 
 class TestReActStep:
@@ -262,14 +282,15 @@ class TestReActLoopEngine:
         self, agent_id, session_id, iteration_ceiling,
         mock_working_memory, mock_custody_logger, mock_redis
     ):
-        """Create a ReAct loop engine."""
+        """Create a ReAct loop engine with short HITL timeout for tests."""
         return ReActLoopEngine(
             agent_id=agent_id,
             session_id=session_id,
             iteration_ceiling=iteration_ceiling,
             working_memory=mock_working_memory,
             custody_logger=mock_custody_logger,
-            redis_client=mock_redis
+            redis_client=mock_redis,
+            hitl_timeout=0.1  # Very short timeout for tests
         )
 
     @pytest.mark.asyncio
@@ -356,7 +377,8 @@ class TestReActLoopEngine:
             iteration_ceiling=small_ceiling,
             working_memory=mock_working_memory,
             custody_logger=mock_custody_logger,
-            redis_client=mock_redis
+            redis_client=mock_redis,
+            hitl_timeout=0.1
         )
 
         async def always_think(chain, state):
@@ -386,7 +408,8 @@ class TestReActLoopEngine:
             iteration_ceiling=ceiling,
             working_memory=mock_working_memory,
             custody_logger=mock_custody_logger,
-            redis_client=mock_redis
+            redis_client=mock_redis,
+            hitl_timeout=0.1
         )
 
         # Create state without COMPLETE task
