@@ -182,13 +182,16 @@ class TestFullPipeline:
         from infra.redis_client import RedisClient
         
         # Set up components
-        postgres = get_postgres_client(
+        from infra.postgres_client import PostgresClient
+        
+        postgres = PostgresClient(
             host=os.getenv("postgres_host", "localhost"),
             port=int(os.getenv("postgres_port", "5432")),
             user=os.getenv("postgres_user", "forensic_user"),
             password=os.getenv("postgres_password", "forensic_pass"),
             database=os.getenv("postgres_db", "forensic_council"),
         )
+        await postgres.connect()
         
         redis_client = RedisClient(
             host=os.getenv("redis_host", "localhost"),

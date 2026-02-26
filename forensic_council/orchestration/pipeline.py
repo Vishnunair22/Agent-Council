@@ -89,8 +89,6 @@ class ForensicCouncilPipeline:
     def _setup_infrastructure(self) -> None:
         """Set up infrastructure connections."""
         from infra.redis_client import RedisClient
-        from infra.qdrant_client import get_qdrant_client
-        from infra.postgres_client import get_postgres_client
         
         self._redis = None
         self._qdrant = None
@@ -105,24 +103,47 @@ class ForensicCouncilPipeline:
             )
         except Exception as e:
             logger.warning("Failed to connect to Redis", error=str(e))
-        
-        try:
-            self._qdrant = get_qdrant_client()
-        except Exception as e:
-            logger.warning("Failed to connect to Qdrant", error=str(e))
-        
-        try:
-            self._postgres = get_postgres_client()
-        except Exception as e:
-            logger.warning("Failed to connect to PostgreSQL", error=str(e))
     
     async def _initialize_components(self, session_id: UUID) -> None:
         """Initialize all components for a session."""
+        from infra.qdrant_client import get_qdrant_client
+        from infra.postgres_client import get_postgres_client
+        
+        if self._redis is not None and getattr(self._redis, '_client', None) is None:
+            try:
+                await self._redis.connect()
+            except Exception as e:
+                logger.warning("Failed to connect to Redis", error=str(e))
+        
+        if self._qdrant is None:
+            try:
+                self._qdrant = await get_qdrant_client()
+            except Exception as e:
+                logger.warning("Failed to connect to Qdrant", error=str(e))
+                self._qdrant = None
+
+        if self._postgres is None:
+            try:
+                self._postgres = await get_postgres_client()
+            except Exception as e:
+                logger.warning("Failed to connect to PostgreSQL", error=str(e))
+                self._postgres = None
+                
         # Initialize custody logger
         self.custody_logger = CustodyLogger(
             postgres_client=self._postgres,
         )
         
+        from infra.storage import LocalStorageBackend
+        from infra.evidence_store import EvidenceStore
+        
+        if self.evidence_store is None:
+            self.evidence_store = EvidenceStore(
+                postgres_client=self._postgres,
+                storage_backend=LocalStorageBackend(storage_path=str(self.config.evidence_storage_path)),
+                custody_logger=self.custody_logger,
+            )
+            
         # Initialize working memory
         self.working_memory = WorkingMemory(
             redis_client=self._redis,
@@ -137,12 +158,6 @@ class ForensicCouncilPipeline:
         
         # Initialize inter-agent bus
         self.inter_agent_bus = InterAgentBus()
-        
-        # Initialize evidence store
-        self.evidence_store = EvidenceStore(
-            postgres_client=self._postgres,
-            base_path=Path(self.config.evidence_storage_path),
-        )
         
         # Initialize session manager
         self.session_manager = SessionManager(redis_client=self._redis)
@@ -199,18 +214,6 @@ class ForensicCouncilPipeline:
             investigator_id,
         )
         
-        # Log session start
-        await self.custody_logger.log_entry(
-            entry_type=EntryType.SESSION_START,
-            agent_id=investigator_id,
-            session_id=session_id,
-            content={
-                "case_id": case_id,
-                "investigator_id": investigator_id,
-                "artifact_id": str(evidence_artifact.artifact_id),
-            },
-        )
-        
         # Create session in manager
         await self.session_manager.create_session(
             session_id=session_id,
@@ -263,6 +266,9 @@ class ForensicCouncilPipeline:
             r.agent_id: r.reflection_report for r in agent_results if r.error is None
         }
         
+        # Resign report after adding all fields
+        report = await self.arbiter.sign_report(report)
+        
         # Step 7: Return signed report
         await self.session_manager.set_final_report(
             session_id=session_id,
@@ -271,7 +277,7 @@ class ForensicCouncilPipeline:
         
         # Log completion
         await self.custody_logger.log_entry(
-            entry_type=EntryType.SESSION_END,
+            entry_type=EntryType.REPORT_SIGNED,
             agent_id="Arbiter",
             session_id=session_id,
             content={
@@ -295,38 +301,17 @@ class ForensicCouncilPipeline:
         investigator_id: str,
     ) -> EvidenceArtifact:
         """Ingest evidence file and create artifact."""
-        # Read file and compute hash
         file_path_obj = Path(file_path)
-        file_content = file_path_obj.read_bytes()
-        content_hash = hashlib.sha256(file_content).hexdigest()
-        
-        # Create artifact
-        artifact = EvidenceArtifact(
-            artifact_id=uuid4(),
-            file_path=file_path,
-            content_hash=content_hash,
-            mime_type=self._get_mime_type(file_path),
-            original_filename=file_path_obj.name,
-            created_by=investigator_id,
-            session_id=session_id,
-        )
         
         # Store in evidence store
-        stored_artifact = await self.evidence_store.store_artifact(
-            artifact=artifact,
-            content=file_content,
-        )
-        
-        # Log to custody
-        await self.custody_logger.log_entry(
-            entry_type=EntryType.EVIDENCE_INGESTED,
-            agent_id=investigator_id,
+        stored_artifact = await self.evidence_store.ingest(
+            file_path=file_path,
             session_id=session_id,
-            content={
-                "artifact_id": str(artifact.artifact_id),
-                "filename": artifact.original_filename,
-                "hash": content_hash,
-            },
+            agent_id=investigator_id,
+            metadata={
+                "mime_type": self._get_mime_type(file_path),
+                "original_filename": file_path_obj.name,
+            }
         )
         
         return stored_artifact
@@ -560,13 +545,17 @@ class ForensicCouncilPipeline:
     ) -> list[dict[str, Any]]:
         """Get evidence version trees."""
         try:
-            versions = await self.evidence_store.get_artifact_versions(artifact_id)
+            tree = await self.evidence_store.get_version_tree(artifact_id)
+            if not tree:
+                return []
+            
+            versions = tree.get_all_artifacts()
             return [
                 {
                     "artifact_id": str(v.artifact_id),
                     "parent_id": str(v.parent_id) if v.parent_id else None,
                     "content_hash": v.content_hash,
-                    "created_at": v.created_at.isoformat(),
+                    "created_at": v.timestamp_utc.isoformat(),
                 }
                 for v in versions
             ]

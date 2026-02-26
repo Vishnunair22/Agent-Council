@@ -10,6 +10,7 @@ authors = [
 ]
 
 dependencies = [
+    # Core
     "langgraph>=0.2",
     "langchain>=0.3",
     "langchain-openai>=0.2",
@@ -21,6 +22,11 @@ dependencies = [
     "cryptography>=42",
     "python-dotenv>=1.0",
     "httpx>=0.27",
+    # API Server
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "websockets>=13.0",
     # Image processing tools
     "Pillow>=10.0",
     "numpy>=1.26",
@@ -33,7 +39,7 @@ dependencies = [
     "librosa>=0.10",
     "soundfile>=0.12",
     # Video processing tools
-    "opencv-python>=4.8",
+    "opencv-python-headless>=4.8",
 ]
 
 [project.optional-dependencies]
@@ -55,6 +61,11 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+    "regression: marks tests as regression tests (deselect with -m 'not regression')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
 
 [tool.coverage.run]
 source = ["core", "infra", "agents", "tools", "orchestration"]
@@ -69,4 +80,4 @@ exclude_lines = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["core", "infra", "agents", "tools", "orchestration", "reports"]
+packages = ["core", "infra", "agents", "tools", "orchestration", "reports", "api"]

@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Clock, Trash2, AlertTriangle, ChevronDown, Download, FileText, FileJson, FileType } from "lucide-react";
+import { Clock, Trash2, AlertTriangle, ChevronDown, Loader2, Shield, Hash } from "lucide-react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { AgentIcon } from "@/components/ui/AgentIcon";
 import { useForensicData } from "@/hooks/useForensicData";
+import { getReport, type ReportDTO } from "@/lib/api";
 
 export default function ResultPage() {
     const router = useRouter();
@@ -15,19 +16,43 @@ export default function ResultPage() {
     // Use Hook
     const { history, currentReport, deleteFromHistory, clearHistory, isLoading } = useForensicData();
 
+    // Real report data from API
+    const [realReport, setRealReport] = useState<ReportDTO | null>(null);
+    const [isLoadingRealReport, setIsLoadingRealReport] = useState(false);
+
     // Refinement States
     const [showAgents, setShowAgents] = useState(true);
-    const [exportOpen, setExportOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
 
+    // Fetch real report from API
+    useEffect(() => {
+        const fetchRealReport = async () => {
+            const sessionId = sessionStorage.getItem('forensic_session_id');
+            const caseId = sessionStorage.getItem('forensic_case_id');
+            
+            if (sessionId && caseId) {
+                setIsLoadingRealReport(true);
+                try {
+                    const response = await getReport(sessionId);
+                    if (response.status === 'complete' && response.report) {
+                        setRealReport(response.report);
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch report:", err);
+                } finally {
+                    setIsLoadingRealReport(false);
+                }
+            }
+        };
+
+        fetchRealReport();
+    }, []);
+
+    // Prevent hydration mismatch
     useEffect(() => {
         setMounted(true);
     }, []);
 
-    // Prevent hydration mismatch
-    if (!mounted) return null;
-
-    // --- Handlers ---
     const handleDeleteOne = (id: string, e: React.MouseEvent) => {
         e.stopPropagation();
         deleteFromHistory(id);
@@ -41,12 +66,24 @@ export default function ResultPage() {
         return new Date(isoString).toLocaleString();
     };
 
+    const getFileName = () => {
+        if (realReport?.case_id) {
+            return realReport.case_id;
+        }
+        if (currentReport?.fileName) {
+            return currentReport.fileName;
+        }
+        return sessionStorage.getItem('forensic_file_name') || "Analysis Result";
+    };
+
+    // If not mounted, return null to prevent hydration mismatch
+    if (!mounted) return null;
+
     return (
         <div className="min-h-screen bg-black text-white p-6 pb-20">
             {/* --- Background --- */}
             <div className="fixed inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-slate-900/40 via-black to-black -z-50" />
 
-            {/* Header Removed as per request for cleaner UI */}
             <div className="pt-10" />
 
             <main className="max-w-5xl mx-auto">
@@ -88,80 +125,51 @@ export default function ResultPage() {
                             exit={{ opacity: 0, y: -10 }}
                             className="space-y-8"
                         >
-                            {isLoading ? (
+                            {isLoading || isLoadingRealReport ? (
                                 <div className="p-12 text-center text-slate-500">
-                                    <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin mx-auto mb-4" />
+                                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-emerald-500" />
                                     <p>Loading forensic data...</p>
                                 </div>
-                            ) : currentReport ? (
+                            ) : realReport || currentReport ? (
                                 <>
-                                    {/* Summary Card */}
+                                    {/* Summary Card - Real Report Data */}
                                     <div className="p-5 md:p-8 rounded-3xl bg-gradient-to-br from-emerald-900/20 to-slate-900/40 border border-emerald-500/20 shadow-2xl">
                                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                                             <div>
-                                                <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 break-all">{currentReport.fileName}</h2>
-                                                <p className="text-slate-400 font-mono text-sm">{formatDate(currentReport.timestamp)}</p>
+                                                <h2 className="text-2xl md:text-3xl font-bold text-white mb-2 break-all">
+                                                    {realReport?.case_id || getFileName()}
+                                                </h2>
+                                                <p className="text-slate-400 font-mono text-sm">
+                                                    {realReport?.signed_utc ? formatDate(realReport.signed_utc) : (currentReport?.timestamp ? formatDate(currentReport.timestamp) : '')}
+                                                </p>
                                             </div>
-                                            <div className="flex flex-wrap gap-3">
-                                                {/* Export Dropdown */}
-                                                <div className="relative">
-                                                    <button
-                                                        onClick={() => setExportOpen(!exportOpen)}
-                                                        className="flex items-center space-x-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-full text-slate-300 transition-colors border border-white/10"
-                                                    >
-                                                        <Download className="w-4 h-4" />
-                                                        <span>Export</span>
-                                                        <ChevronDown className={`w-4 h-4 transition-transform ${exportOpen ? 'rotate-180' : ''}`} />
-                                                    </button>
-
-                                                    <AnimatePresence>
-                                                        {exportOpen && (
-                                                            <motion.div
-                                                                initial={{ opacity: 0, y: 10 }}
-                                                                animate={{ opacity: 1, y: 0 }}
-                                                                exit={{ opacity: 0, y: 10 }}
-                                                                className="absolute right-0 mt-2 w-48 bg-slate-800 rounded-xl shadow-xl border border-white/10 overflow-hidden z-20"
-                                                            >
-                                                                <button className="w-full px-4 py-3 text-left bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-3 transition-colors text-sm">
-                                                                    <FileText className="w-4 h-4" /> PDF Report
-                                                                </button>
-                                                                <button className="w-full px-4 py-3 text-left bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-3 transition-colors text-sm border-t border-white/5">
-                                                                    <FileType className="w-4 h-4" /> DOCX Format
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentReport, null, 2));
-                                                                        const downloadAnchorNode = document.createElement('a');
-                                                                        downloadAnchorNode.setAttribute("href", dataStr);
-                                                                        downloadAnchorNode.setAttribute("download", `forensic_report_${currentReport.id}.json`);
-                                                                        document.body.appendChild(downloadAnchorNode);
-                                                                        downloadAnchorNode.click();
-                                                                        downloadAnchorNode.remove();
-                                                                        setExportOpen(false);
-                                                                    }}
-                                                                    className="w-full px-4 py-3 text-left bg-slate-800 hover:bg-slate-700 text-emerald-400 flex items-center gap-3 transition-colors text-sm border-t border-white/5"
-                                                                >
-                                                                    <FileJson className="w-4 h-4" /> JSON Data
-                                                                </button>
-                                                            </motion.div>
-                                                        )}
-                                                    </AnimatePresence>
+                                            {realReport && (
+                                                <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-500/20 rounded-full border border-emerald-500/30">
+                                                    <Shield className="w-4 h-4 text-emerald-400" />
+                                                    <span className="text-xs font-semibold text-emerald-400">VERIFIED</span>
                                                 </div>
-
-                                                {/* Badge Removed as per request */}
-                                            </div>
+                                            )}
                                         </div>
+                                        
                                         <div className="space-y-4">
                                             <h3 className="text-xl font-semibold text-emerald-400">Executive Summary</h3>
-                                            <p className="text-base md:text-lg text-slate-200 leading-relaxed font-light">{currentReport.summary}</p>
-                                            <p className="text-slate-400 leading-relaxed">
-                                                The Council has aggregated data from all available forensic layers. The following key signals were extracted and cross-referenced:
+                                            <p className="text-base md:text-lg text-slate-200 leading-relaxed font-light">
+                                                {realReport?.executive_summary || currentReport?.summary || 'Analysis complete.'}
                                             </p>
 
+                                            {/* Key Findings */}
                                             <div className="bg-slate-900/50 rounded-xl p-4 border border-white/5 mt-4">
-                                                <h4 className="text-xs md:text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider">Key Signals Detected</h4>
+                                                <h4 className="text-xs md:text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider">Key Findings</h4>
                                                 <ul className="space-y-2">
-                                                    {currentReport.agents.map((agent: any, i: number) => (
+                                                    {realReport?.cross_modal_confirmed?.map((finding: any, i: number) => (
+                                                        <li key={i} className="flex items-start text-sm text-slate-400 gap-2">
+                                                            <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
+                                                            <span>
+                                                                <strong className="text-slate-300">{finding.agent_name}:</strong> {finding.reasoning_summary}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                    {(!realReport?.cross_modal_confirmed || realReport.cross_modal_confirmed.length === 0) && currentReport?.agents?.map((agent: any, i: number) => (
                                                         <li key={i} className="flex items-start text-sm text-slate-400 gap-2">
                                                             <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                                                             <span>
@@ -173,6 +181,43 @@ export default function ResultPage() {
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Cryptographic Verification Section */}
+                                    {realReport && (
+                                        <>
+                                            <div className="p-5 md:p-6 rounded-2xl bg-slate-900/50 border border-white/10">
+                                                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                                    <Hash className="w-5 h-5 text-emerald-400" />
+                                                    Cryptographic Verification
+                                                </h3>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <div className="bg-black/40 rounded-xl p-4 border border-white/5">
+                                                        <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Report Hash (SHA-256)</p>
+                                                        <p className="text-sm font-mono text-emerald-400 break-all">
+                                                            {realReport.report_hash || 'N/A'}
+                                                        </p>
+                                                    </div>
+                                                    <div className="bg-black/40 rounded-xl p-4 border border-white/5">
+                                                        <p className="text-xs text-slate-500 uppercase tracking-wider mb-2">Digital Signature</p>
+                                                        <p className="text-sm font-mono text-emerald-400 break-all">
+                                                            {realReport.cryptographic_signature ? 
+                                                                `${realReport.cryptographic_signature.substring(0, 32)}...` : 'N/A'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Uncertainty Statement */}
+                                            {realReport.uncertainty_statement && (
+                                                <div className="p-5 md:p-6 rounded-2xl bg-amber-900/10 border border-amber-500/30">
+                                                    <h3 className="text-lg font-semibold text-amber-400 mb-3">Uncertainty Statement</h3>
+                                                    <p className="text-sm text-slate-300 leading-relaxed">
+                                                        {realReport.uncertainty_statement}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
 
                                     {/* Toggle for Individual Agents */}
                                     <div className="flex justify-center">
@@ -195,24 +240,56 @@ export default function ResultPage() {
                                                 className="overflow-hidden"
                                             >
                                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4">
-                                                    {currentReport.agents.map((agent: any, i: number) => (
-                                                        <div key={i} className="p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
-                                                            <div className="flex items-center gap-3 mb-3">
-                                                                <div className="p-2 bg-slate-800 rounded-lg text-emerald-400">
-                                                                    <AgentIcon role={agent.role} />
+                                                    {/* Use real report agent findings if available */}
+                                                    {realReport?.per_agent_findings && Object.entries(realReport.per_agent_findings).map(([agentId, findings]: [string, any]) =>
+                                                        findings.map((finding: any, i: number) => (
+                                                            <div key={`${agentId}-${i}`} className="p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                                                                <div className="flex items-center gap-3 mb-3">
+                                                                    <div className="p-2 bg-slate-800 rounded-lg text-emerald-400">
+                                                                        <AgentIcon role={finding.finding_type || 'agent'} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <h4 className="font-bold text-sm">{finding.agent_name || agentId}</h4>
+                                                                        <p className="text-xs text-slate-500">{finding.finding_type || 'analysis'}</p>
+                                                                    </div>
                                                                 </div>
-                                                                <div>
-                                                                    <h4 className="font-bold text-sm">{agent.name}</h4>
-                                                                    <p className="text-xs text-slate-500">{agent.role}</p>
+                                                                <p className="text-sm text-slate-400 leading-relaxed mb-3 h-14 overflow-hidden">
+                                                                    {finding.reasoning_summary}
+                                                                </p>
+                                                                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                                                    <div 
+                                                                        className="bg-emerald-500 h-full" 
+                                                                        style={{ width: `${(finding.calibrated_probability || finding.confidence_raw || 0) * 100}%` }} 
+                                                                    />
                                                                 </div>
+                                                                <p className="text-right text-[10px] text-emerald-500 font-mono mt-1">
+                                                                    {Math.round((finding.calibrated_probability || finding.confidence_raw || 0) * 100)}% CONFIDENCE
+                                                                </p>
                                                             </div>
-                                                            <p className="text-sm text-slate-400 leading-relaxed mb-3 h-14 overflow-hidden">{agent.result}</p>
-                                                            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                                                                <div className="bg-emerald-500 h-full" style={{ width: `${agent.confidence}%` }} />
+                                                        ))
+                                                    )}
+                                                    
+                                                    {/* Fallback to currentReport agents if no real report data */}
+                                                    {(!realReport?.per_agent_findings || Object.keys(realReport.per_agent_findings).length === 0) && 
+                                                        currentReport?.agents?.map((agent: any, i: number) => (
+                                                            <div key={i} className="p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                                                                <div className="flex items-center gap-3 mb-3">
+                                                                    <div className="p-2 bg-slate-800 rounded-lg text-emerald-400">
+                                                                        <AgentIcon role={agent.role} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <h4 className="font-bold text-sm">{agent.name}</h4>
+                                                                        <p className="text-xs text-slate-500">{agent.role}</p>
+                                                                    </div>
+                                                                </div>
+                                                                <p className="text-sm text-slate-400 leading-relaxed mb-3 h-14 overflow-hidden">{agent.result}</p>
+                                                                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                                                                    <div className="bg-emerald-500 h-full" style={{ width: `${agent.confidence}%` }} />
+                                                                </div>
+                                                                <p className="text-right text-[10px] text-emerald-500 font-mono mt-1">{agent.confidence}% CONFIDENCE</p>
                                                             </div>
-                                                            <p className="text-right text-[10px] text-emerald-500 font-mono mt-1">{agent.confidence}% CONFIDENCE</p>
-                                                        </div>
-                                                    ))}
+                                                        ))
+                                                    }
                                                 </div>
                                             </motion.div>
                                         )}
@@ -238,7 +315,7 @@ export default function ResultPage() {
                             )}
                         </motion.div>
                     ) : (
-                        /* --- History Tab Content (Same as before) --- */
+                        /* --- History Tab Content --- */
                         <motion.div
                             key="history"
                             initial={{ opacity: 0, y: 10 }}

@@ -256,24 +256,11 @@ class ForensicAgent(ABC):
     
     async def _initialize_working_memory(self) -> None:
         """Initialize working memory with task decomposition."""
-        # Create initial state
-        state = await self.working_memory.create_state(
+        await self.working_memory.initialize(
             session_id=self.session_id,
-            agent_id=self.agent_id
-        )
-        
-        # Add tasks from decomposition
-        for task_description in self.task_decomposition:
-            task = Task(
-                description=task_description,
-                status=TaskStatus.PENDING
-            )
-            state.tasks.append(task)
-        
-        # Update state with tasks
-        await self.working_memory.update_state(
-            session_id=self.session_id,
-            updates={"tasks": [t.model_dump() for t in state.tasks]}
+            agent_id=self.agent_id,
+            tasks=self.task_decomposition,
+            iteration_ceiling=self.iteration_ceiling,
         )
         
         logger.debug(
@@ -336,7 +323,10 @@ class ForensicAgent(ABC):
         )
         
         # Get current working memory state
-        state = await self.working_memory.get_state(self.session_id)
+        state = await self.working_memory.get_state(
+            session_id=self.session_id,
+            agent_id=self.agent_id
+        )
         
         # RT1: Check if all tasks are complete
         incomplete_tasks = []

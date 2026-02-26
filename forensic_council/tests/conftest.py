@@ -57,6 +57,24 @@ def test_settings() -> Settings:
     return settings
 
 
+# Autouse cleanup fixture
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def cleanup_singletons():
+    """Clear singleton clients after each test to prevent event loop closed errors."""
+    yield
+    await close_postgres_client()
+    await close_qdrant_client()
+    # close_redis_client is synchronous or async? Let's assume async if others are. No, redis_client doesn't have a singleton usually, but let's check if close_redis_client exists
+    # If it is async:
+    try:
+        await close_redis_client()
+    except TypeError: # If it turns out synchronous
+        close_redis_client()
+    
+    import infra.storage
+    infra.storage._storage_backend = None
+
+
 # Redis fixtures
 @pytest_asyncio.fixture(scope="function")
 async def redis_client() -> AsyncGenerator[RedisClient, None]:

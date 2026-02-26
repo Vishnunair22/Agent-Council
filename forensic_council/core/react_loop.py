@@ -262,12 +262,13 @@ class ReActLoopEngine:
             ReActLoopResult with findings and reasoning chain
         """
         # Initialize working memory state
-        state = await self.working_memory.get_state(self.session_id)
-        if state is None:
-            state = await self.working_memory.create_state(
+        try:
+            state = await self.working_memory.get_state(
                 session_id=self.session_id,
                 agent_id=self.agent_id
             )
+        except Exception:
+            state = None
 
         # Create initial THOUGHT step
         initial_step = ReActStep(
@@ -283,7 +284,13 @@ class ReActLoopEngine:
         # Main loop
         while not self._terminated and self._current_iteration < self.iteration_ceiling:
             # Get current state
-            state = await self.working_memory.get_state(self.session_id)
+            try:
+                state = await self.working_memory.get_state(
+                    session_id=self.session_id,
+                    agent_id=self.agent_id
+                )
+            except Exception:
+                state = None
             if state is None:
                 break
 
@@ -448,7 +455,13 @@ class ReActLoopEngine:
             HITLCheckpointState with PAUSED status
         """
         # Serialize working memory state
-        state = await self.working_memory.get_state(self.session_id)
+        try:
+            state = await self.working_memory.get_state(
+                session_id=self.session_id,
+                agent_id=self.agent_id
+            )
+        except Exception:
+            state = None
         serialized_state = state.model_dump() if state else {}
 
         # Create checkpoint

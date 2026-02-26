@@ -308,7 +308,14 @@ async def get_postgres_client() -> PostgresClient:
     global _postgres_client
     if _postgres_client is None:
         _postgres_client = PostgresClient()
-        await _postgres_client.connect()
+        
+    if getattr(_postgres_client, "_pool", None) is None:
+        try:
+            await _postgres_client.connect()
+        except Exception as e:
+            _postgres_client = None
+            raise e
+            
     return _postgres_client
 
 

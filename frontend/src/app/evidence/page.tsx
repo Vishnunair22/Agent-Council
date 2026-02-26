@@ -2,13 +2,14 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, FileCheck, CheckCircle, RefreshCw, ArrowRight, Loader2, AlertCircle } from "lucide-react";
+import { Upload, FileCheck, CheckCircle, RefreshCw, ArrowRight, Loader2, AlertCircle, X, ShieldAlert, ShieldCheck, ShieldX, ArrowRightCircle, Hand } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useForensicData } from "@/hooks/useForensicData";
 import { useSimulation } from "@/hooks/useSimulation";
 import { AgentResult } from "@/types";
 import { AgentIcon } from "@/components/ui/AgentIcon";
 import { AGENTS_DATA } from "@/lib/constants";
+import { startInvestigation, submitHITLDecision, HITLCheckpoint, type HITLDecision } from "@/lib/api";
 
 export default function EvidencePage() {
     const router = useRouter();
@@ -18,6 +19,8 @@ export default function EvidencePage() {
     const [dragActive, setDragActive] = useState(false);
     const [file, setFile] = useState<File | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [caseId] = useState(() => `CASE-${Date.now()}`);
+    const [sessionId, setSessionId] = useState<string | null>(null);
 
     const inputRef = useRef<HTMLInputElement>(null);
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -100,7 +103,9 @@ export default function EvidencePage() {
         currentThinkingPhrase,
         startSimulation,
         resetSimulation,
-        totalAgents
+        totalAgents,
+        hitlCheckpoint,
+        dismissCheckpoint
     } = useSimulation({
         playSound,
         onAgentComplete: (result) => {
@@ -150,15 +155,48 @@ export default function EvidencePage() {
         }
     };
 
-    const startAnalysis = (e: React.MouseEvent) => {
+    const startAnalysis = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        startSimulation();
+        
+        if (!file) {
+            setError("No file selected");
+            return;
+        }
+
+        try {
+            setError(null);
+            // Call the API to start investigation
+            const result = await startInvestigation(
+                file,
+                caseId,
+                "INVESTIGATOR-1"
+            );
+            
+            // Get the session_id and pass it to the simulation hook
+            const newSessionId = result.session_id;
+            setSessionId(newSessionId);
+            
+            // Start simulation with the session ID (this connects to WebSocket)
+            startSimulation(newSessionId);
+            
+            // Store session ID in sessionStorage for the result page
+            sessionStorage.setItem('forensic_session_id', newSessionId);
+            sessionStorage.setItem('forensic_case_id', caseId);
+            sessionStorage.setItem('forensic_file_name', file.name);
+        } catch (err) {
+            console.error("Failed to start investigation:", err);
+            setError(err instanceof Error ? err.message : "Failed to start analysis");
+        }
     };
 
     const handleReset = (e: React.MouseEvent) => {
         e.stopPropagation();
         setFile(null);
         setError(null);
+        setSessionId(null);
+        sessionStorage.removeItem('forensic_session_id');
+        sessionStorage.removeItem('forensic_case_id');
+        sessionStorage.removeItem('forensic_file_name');
         resetSimulation();
     };
 
@@ -175,16 +213,42 @@ export default function EvidencePage() {
         }));
 
         const reportData = {
-            id: Date.now().toString(),
+            id: sessionId || Date.now().toString(),
             fileName: file?.name || "Unknown File",
             timestamp: new Date().toISOString(),
             agents: cleanAgents,
-            summary: `Analyzed ${cleanAgents.length} forensic indicators.`
+            summary: `Analyzed ${cleanAgents.length} forensic indicators.`,
+            sessionId: sessionId,
+            caseId: caseId
         };
 
         saveCurrentReport(reportData);
         addToHistory(reportData);
         router.push("/result");
+    };
+
+    // --- HITL Decision Handler ---
+    const handleHITLDecision = async (decision: HITLDecision) => {
+        if (!hitlCheckpoint || !sessionId) {
+            console.error("No HITL checkpoint or session ID available");
+            return;
+        }
+
+        try {
+            await submitHITLDecision({
+                session_id: sessionId,
+                checkpoint_id: hitlCheckpoint.checkpoint_id,
+                agent_id: hitlCheckpoint.agent_id,
+                decision: decision,
+                note: `Decision: ${decision}`
+            });
+            
+            // Dismiss the checkpoint to continue
+            dismissCheckpoint();
+        } catch (err) {
+            console.error("Failed to submit HITL decision:", err);
+            setError(err instanceof Error ? err.message : "Failed to submit decision");
+        }
     };
 
 
@@ -420,6 +484,91 @@ export default function EvidencePage() {
                 )}
 
             </main>
+
+            {/* --- HITL Modal */}
+            <AnimatePresence>
+                {hitlCheckpoint && sessionId && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                        onClick={() => {}}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-slate-900 border border-amber-500/50 rounded-3xl p-6 md:p-8 max-w-2xl w-full shadow-2xl shadow-amber-500/20"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-amber-500/20 rounded-xl">
+                                        <ShieldAlert className="w-8 h-8 text-amber-500" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white">Human-in-the-Loop Checkpoint</h2>
+                                        <p className="text-sm text-amber-400/70">{hitlCheckpoint!.agent_name} requires approval</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => dismissCheckpoint()}
+                                    className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                                >
+                                    <X className="w-5 h-5 text-slate-400" />
+                                </button>
+                            </div>
+
+                            {/* Brief Content */}
+                            <div className="bg-black/40 rounded-2xl p-5 mb-6 border border-white/5">
+                                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Investigator Brief</h3>
+                                <p className="text-slate-300 leading-relaxed whitespace-pre-wrap">{hitlCheckpoint!.brief_text}</p>
+                            </div>
+
+                            {/* Decision Buttons */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <button
+                                    onClick={() => handleHITLDecision("APPROVE")}
+                                    className="flex flex-col items-center gap-2 p-4 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 rounded-xl transition-all group"
+                                >
+                                    <ShieldCheck className="w-6 h-6 text-emerald-500 group-hover:scale-110 transition-transform" />
+                                    <span className="text-sm font-semibold text-emerald-400">Approve</span>
+                                </button>
+
+                                <button
+                                    onClick={() => handleHITLDecision("REDIRECT")}
+                                    className="flex flex-col items-center gap-2 p-4 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 rounded-xl transition-all group"
+                                >
+                                    <ArrowRightCircle className="w-6 h-6 text-blue-500 group-hover:scale-110 transition-transform" />
+                                    <span className="text-sm font-semibold text-blue-400">Redirect</span>
+                                </button>
+
+                                <button
+                                    onClick={() => handleHITLDecision("OVERRIDE")}
+                                    className="flex flex-col items-center gap-2 p-4 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 rounded-xl transition-all group"
+                                >
+                                    <Hand className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform" />
+                                    <span className="text-sm font-semibold text-orange-400">Override</span>
+                                </button>
+
+                                <button
+                                    onClick={() => handleHITLDecision("TERMINATE")}
+                                    className="flex flex-col items-center gap-2 p-4 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-xl transition-all group"
+                                >
+                                    <ShieldX className="w-6 h-6 text-red-500 group-hover:scale-110 transition-transform" />
+                                    <span className="text-sm font-semibold text-red-400">Terminate</span>
+                                </button>
+                            </div>
+
+                            <p className="text-center text-xs text-slate-500 mt-4">
+                                Choose an action to continue the analysis pipeline
+                            </p>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

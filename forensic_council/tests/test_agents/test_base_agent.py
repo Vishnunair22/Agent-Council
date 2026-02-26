@@ -357,11 +357,8 @@ class TestForensicAgentBase:
         """Test that agent initializes working memory with task decomposition."""
         await agent._initialize_working_memory()
         
-        # Verify create_state was called
-        mock_working_memory.create_state.assert_called_once()
-        
-        # Verify update_state was called with tasks
-        mock_working_memory.update_state.assert_called()
+        # Verify initialize was called
+        mock_working_memory.initialize.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_agent_logs_session_start_to_custody(

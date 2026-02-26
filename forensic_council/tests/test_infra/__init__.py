@@ -1,6 +1,10 @@
 """
-Infrastructure Tests Package
-============================
+Infrastructure Unit Tests
+=======================
 
-Tests for infrastructure components: Redis, Qdrant, PostgreSQL.
+Unit tests for infrastructure modules.
 """
+
+import pytest
+
+pytestmark = pytest.mark.unit

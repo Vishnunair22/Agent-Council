@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { AGENTS_DATA } from "@/lib/constants";
 import { AgentResult } from "@/types";
+import { createLiveSocket, BriefUpdate, HITLCheckpoint } from "@/lib/api";
 
 type SimulationStatus = "idle" | "analyzing" | "initiating" | "processing" | "complete";
 
@@ -17,120 +18,164 @@ export const useSimulation = ({ onAgentComplete, onComplete, playSound }: UseSim
     const [completedAgents, setCompletedAgents] = useState<AgentResult[]>([]);
     const [currentAgentIndex, setCurrentAgentIndex] = useState(-1);
     const [currentThinkingPhrase, setCurrentThinkingPhrase] = useState("");
+    const [hitlCheckpoint, setHitlCheckpoint] = useState<HITLCheckpoint | null>(null);
+    const [sessionId, setSessionId] = useState<string | null>(null);
+    
+    const wsRef = useRef<WebSocket | null>(null);
+    const thinkingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const thinkingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-    const mainTimerRef = useRef<NodeJS.Timeout | null>(null);
+    // Store callbacks in refs to avoid triggering effect on every render
+    const onAgentCompleteRef = useRef(onAgentComplete);
+    const onCompleteRef = useRef(onComplete);
+    const playSoundRef = useRef(playSound);
 
-    const startSimulation = useCallback(() => {
-        setStatus("analyzing");
-        setCompletedAgents([]);
-        setCurrentAgentIndex(-1);
-    }, []);
-
-    const resetSimulation = useCallback(() => {
-        setStatus("idle");
-        setCompletedAgents([]);
-        setCurrentAgentIndex(-1);
-        setCurrentThinkingPhrase("");
-
-        if (thinkingIntervalRef.current) {
-            clearInterval(thinkingIntervalRef.current);
-            thinkingIntervalRef.current = null;
-        }
-        if (mainTimerRef.current) {
-            clearTimeout(mainTimerRef.current);
-            mainTimerRef.current = null;
-        }
-    }, []);
-
-    // Main simulation orchestration
+    // Update refs when props change
     useEffect(() => {
-        console.log('[Simulation] Status:', status, 'Agent Index:', currentAgentIndex);
+        onAgentCompleteRef.current = onAgentComplete;
+        onCompleteRef.current = onComplete;
+        playSoundRef.current = playSound;
+    }, [onAgentComplete, onComplete, playSound]);
 
-        if (status === "analyzing") {
-            console.log('[Simulation] Starting analysis phase (4s)');
-            // Step 1: Analyzing Evidence (4s)
-            mainTimerRef.current = setTimeout(() => {
-                console.log('[Simulation] Analysis complete, moving to initiating');
-                setStatus("initiating");
-            }, 4000);
-        } else if (status === "initiating") {
-            console.log('[Simulation] Initiating agents (1s)');
-            // Step 2: Initiating Agents (brief transition)
-            mainTimerRef.current = setTimeout(() => {
-                console.log('[Simulation] Starting processing, agent 0');
-                setStatus("processing");
-                setCurrentAgentIndex(0);
-            }, 1000);
-        } else if (status === "processing" && currentAgentIndex >= 0 && currentAgentIndex < AGENTS_DATA.length) {
-            // Step 3: Process each agent sequentially
-            const agent = AGENTS_DATA[currentAgentIndex];
-            console.log(`[Simulation] Processing agent ${currentAgentIndex}: ${agent.name}`);
-
-            // Start thinking phrase rotation
-            let phraseIndex = 0;
-            setCurrentThinkingPhrase(agent.simulation.thinkingPhrases?.[0] || agent.simulation.thinking);
-
-            if (agent.simulation.thinkingPhrases) {
-                thinkingIntervalRef.current = setInterval(() => {
-                    phraseIndex = (phraseIndex + 1) % agent.simulation.thinkingPhrases!.length;
-                    setCurrentThinkingPhrase(agent.simulation.thinkingPhrases![phraseIndex]);
-                }, 800);
-            }
-
-            // Agent analysis delay (4s)
-            mainTimerRef.current = setTimeout(() => {
-                console.log(`[Simulation] Agent ${currentAgentIndex} complete`);
-
-                // Stop thinking rotation
-                if (thinkingIntervalRef.current) {
-                    clearInterval(thinkingIntervalRef.current);
-                    thinkingIntervalRef.current = null;
-                }
-
-                // Create result
-                const result: AgentResult = {
-                    id: agent.id,
-                    name: agent.name,
-                    role: agent.role,
-                    result: agent.simulation.result,
-                    confidence: agent.simulation.confidence,
-                    thinking: agent.simulation.thinking
-                };
-
-                // Add to completed agents
-                setCompletedAgents(prev => {
-                    console.log('[Simulation] Adding agent to completed list, prev length:', prev.length);
-                    return [...prev, result];
-                });
-                onAgentComplete?.(result);
-                playSound?.("agent");
-
-                // Move to next agent or complete
-                if (currentAgentIndex + 1 < AGENTS_DATA.length) {
-                    console.log(`[Simulation] Moving to agent ${currentAgentIndex + 1}`);
-                    setCurrentAgentIndex(prev => prev + 1);
-                } else {
-                    console.log('[Simulation] All agents complete');
-                    setStatus("complete");
-                    onComplete?.();
-                    playSound?.("complete");
-                }
-            }, 4000);
+    // Connect to WebSocket when sessionId changes
+    useEffect(() => {
+        if (!sessionId) {
+            return;
         }
 
-        // Cleanup
+        // Disconnect existing WebSocket
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+
+        const handleMessage = (update: BriefUpdate) => {
+            console.log("[WebSocket] Received update:", update);
+
+            switch (update.type) {
+                case "AGENT_UPDATE":
+                    // Update agent thinking/status
+                    if (update.agent_id && update.data) {
+                        const agentData = update.data as { status?: string; thinking?: string };
+                        if (agentData.thinking) {
+                            setCurrentThinkingPhrase(agentData.thinking);
+                        }
+                    }
+                    setStatus("analyzing");
+                    break;
+
+                case "HITL_CHECKPOINT":
+                    // Show HITL checkpoint
+                    if (update.data) {
+                        const checkpoint: HITLCheckpoint = {
+                            checkpoint_id: update.data.checkpoint_id as string,
+                            session_id: update.session_id,
+                            agent_id: update.agent_id || "",
+                            agent_name: update.agent_name || "",
+                            brief_text: update.message,
+                            decision_needed: "APPROVE, REDIRECT, or TERMINATE",
+                            created_at: new Date().toISOString(),
+                        };
+                        setHitlCheckpoint(checkpoint);
+                    }
+                    break;
+
+                case "AGENT_COMPLETE":
+                    // Mark agent as complete
+                    if (update.agent_id) {
+                        const agent = AGENTS_DATA.find(a => a.id === update.agent_id);
+                        if (agent) {
+                            const result: AgentResult = {
+                                id: agent.id,
+                                name: agent.name,
+                                role: agent.role,
+                                result: update.message,
+                                confidence: 0.85,
+                                thinking: update.message,
+                            };
+                            setCompletedAgents(prev => [...prev, result]);
+                            onAgentCompleteRef.current?.(result);
+                            playSoundRef.current?.("agent");
+                        }
+                    }
+                    break;
+
+                case "PIPELINE_COMPLETE":
+                    // All agents complete
+                    setStatus("complete");
+                    onCompleteRef.current?.();
+                    playSoundRef.current?.("complete");
+                    
+                    // Close WebSocket
+                    if (wsRef.current) {
+                        wsRef.current.close();
+                        wsRef.current = null;
+                    }
+                    break;
+
+                case "ERROR":
+                    console.error("[WebSocket] Error:", update.message);
+                    setStatus("complete"); // Or handle error state
+                    break;
+            }
+        };
+
+        const handleClose = () => {
+            console.log("[WebSocket] Connection closed");
+            wsRef.current = null;
+        };
+
+        // Create WebSocket connection
+        wsRef.current = createLiveSocket(
+            sessionId,
+            handleMessage,
+            handleClose
+        );
+
+        // Cleanup on unmount or session change
         return () => {
-            if (mainTimerRef.current) {
-                clearTimeout(mainTimerRef.current);
-                mainTimerRef.current = null;
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
             }
             if (thinkingIntervalRef.current) {
                 clearInterval(thinkingIntervalRef.current);
                 thinkingIntervalRef.current = null;
             }
         };
-    }, [status, currentAgentIndex]); // Removed callback dependencies to prevent timer cancellation
+    }, [sessionId]);
+
+    // Legacy simulation functions (kept for backward compatibility)
+    const startSimulation = useCallback((newSessionId?: string) => {
+        if (newSessionId) {
+            setSessionId(newSessionId);
+            setStatus("analyzing");
+        }
+        setCompletedAgents([]);
+        setCurrentAgentIndex(-1);
+    }, []);
+
+    const resetSimulation = useCallback(() => {
+        setSessionId(null);
+        setStatus("idle");
+        setCompletedAgents([]);
+        setCurrentAgentIndex(-1);
+        setCurrentThinkingPhrase("");
+        setHitlCheckpoint(null);
+
+        if (wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+        }
+        if (thinkingIntervalRef.current) {
+            clearInterval(thinkingIntervalRef.current);
+            thinkingIntervalRef.current = null;
+        }
+    }, []);
+
+    // Dismiss HITL checkpoint
+    const dismissCheckpoint = useCallback(() => {
+        setHitlCheckpoint(null);
+    }, []);
 
     return {
         status,
@@ -139,6 +184,8 @@ export const useSimulation = ({ onAgentComplete, onComplete, playSound }: UseSim
         currentThinkingPhrase,
         startSimulation,
         resetSimulation,
+        dismissCheckpoint,
+        hitlCheckpoint,
         totalAgents: AGENTS_DATA.length
     };
 };
