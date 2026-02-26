@@ -240,9 +240,14 @@ class CouncilArbiter:
     
     async def sign_report(self, report: ForensicReport) -> ForensicReport:
         """Sign the forensic report with the Arbiter key."""
-        report_dict = report.model_dump(exclude={"cryptographic_signature", "report_hash", "signed_utc"})
+        # Use mode="json" to safely cast UUIDs/DateTimes to string types
+        report_dict = report.model_dump(
+            mode="json",
+            exclude={"cryptographic_signature", "report_hash", "signed_utc"}
+        )
         
-        report_json = json.dumps(report_dict, sort_keys=True, default=str)
+        # Now json.dumps won't require a generic default=str fallback
+        report_json = json.dumps(report_dict, sort_keys=True)
         report_hash = hashlib.sha256(report_json.encode()).hexdigest()
         
         signed_entry = sign_content(

@@ -240,23 +240,32 @@ export async function pollForReport(
   intervalMs: number = 5000
 ): Promise<ReportDTO> {
   return new Promise((resolve, reject) => {
+    let intervalId: NodeJS.Timeout;
+    let hasFinished = false;
+    
     const poll = async () => {
+      if (hasFinished) return;
+      
       try {
         const result = await getReport(sessionId);
 
         if (result.status === "complete" && result.report) {
+          hasFinished = true;
+          clearInterval(intervalId); // FIX: Clear interval on success
           resolve(result.report);
         } else {
           onProgress("in_progress");
           // Continue polling
         }
       } catch (error) {
+        hasFinished = true;
+        clearInterval(intervalId); // FIX: Clear interval on error
         reject(error);
       }
     };
 
     // Start polling
-    const intervalId = setInterval(poll, intervalMs);
+    intervalId = setInterval(poll, intervalMs);
 
     // Initial poll
     poll();

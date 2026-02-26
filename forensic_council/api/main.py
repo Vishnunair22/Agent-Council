@@ -8,8 +8,9 @@ FastAPI application with WebSocket support for real-time updates.
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.routes import hitl, investigation, sessions
 from core.logging import get_logger
@@ -35,9 +36,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Shutdown
     logger.info("Shutting down Forensic Council API server...")
     
-    # Clean up WebSocket connections
-    investigation._websocket_connections.clear()
-    investigation._active_pipelines.clear()
+    # Clean up WebSocket connections using proper cleanup method
+    if hasattr(investigation, 'cleanup_connections'):
+        investigation.cleanup_connections()
+    else:
+        # Fallback to direct access if cleanup method doesn't exist
+        investigation._websocket_connections.clear()
+        investigation._active_pipelines.clear()
 
 
 # Create FastAPI app
@@ -53,19 +58,18 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-    ],
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|0\.0\.0\.0)(:300[01])?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+@app.middleware("http")
+async def diagnostic_middleware(request: Request, call_next):
+    origin = request.headers.get("origin")
+    logger.info(f"Incoming {request.method} to {request.url.path} from Origin: {origin}")
+    response = await call_next(request)
+    return response
 
 # Include routers
 app.include_router(investigation.router)

@@ -339,8 +339,9 @@ class ForensicCouncilPipeline:
                 return AgentLoopResult(
                     agent_id="Agent1",
                     findings=[f.model_dump() for f in findings],
-                    reflection_report=agent._reflection_report.model_dump() if agent._reflection_report else {},
-                    react_chain=agent._react_chain if hasattr(agent, '_react_chain') else [],
+                    # Safely access attributes with getattr in case the agent crashed mid-initialization
+                    reflection_report=getattr(agent, '_reflection_report', None).model_dump() if getattr(agent, '_reflection_report', None) else {},
+                    react_chain=getattr(agent, '_react_chain', []),
                 )
             except Exception as e:
                 logger.error("Agent1 failed", error=str(e))
@@ -362,8 +363,9 @@ class ForensicCouncilPipeline:
                 return AgentLoopResult(
                     agent_id="Agent2",
                     findings=[f.model_dump() for f in findings],
-                    reflection_report=agent._reflection_report.model_dump() if agent._reflection_report else {},
-                    react_chain=agent._react_chain if hasattr(agent, '_react_chain') else [],
+                    # Safely access attributes with getattr in case the agent crashed mid-initialization
+                    reflection_report=getattr(agent, '_reflection_report', None).model_dump() if getattr(agent, '_reflection_report', None) else {},
+                    react_chain=getattr(agent, '_react_chain', []),
                 )
             except Exception as e:
                 logger.error("Agent2 failed", error=str(e))
@@ -385,8 +387,9 @@ class ForensicCouncilPipeline:
                 return AgentLoopResult(
                     agent_id="Agent3",
                     findings=[f.model_dump() for f in findings],
-                    reflection_report=agent._reflection_report.model_dump() if agent._reflection_report else {},
-                    react_chain=agent._react_chain if hasattr(agent, '_react_chain') else [],
+                    # Safely access attributes with getattr in case the agent crashed mid-initialization
+                    reflection_report=getattr(agent, '_reflection_report', None).model_dump() if getattr(agent, '_reflection_report', None) else {},
+                    react_chain=getattr(agent, '_react_chain', []),
                 )
             except Exception as e:
                 logger.error("Agent3 failed", error=str(e))
@@ -408,8 +411,9 @@ class ForensicCouncilPipeline:
                 return AgentLoopResult(
                     agent_id="Agent4",
                     findings=[f.model_dump() for f in findings],
-                    reflection_report=agent._reflection_report.model_dump() if agent._reflection_report else {},
-                    react_chain=agent._react_chain if hasattr(agent, '_react_chain') else [],
+                    # Safely access attributes with getattr in case the agent crashed mid-initialization
+                    reflection_report=getattr(agent, '_reflection_report', None).model_dump() if getattr(agent, '_reflection_report', None) else {},
+                    react_chain=getattr(agent, '_react_chain', []),
                 )
             except Exception as e:
                 logger.error("Agent4 failed", error=str(e))
@@ -431,8 +435,9 @@ class ForensicCouncilPipeline:
                 return AgentLoopResult(
                     agent_id="Agent5",
                     findings=[f.model_dump() for f in findings],
-                    reflection_report=agent._reflection_report.model_dump() if agent._reflection_report else {},
-                    react_chain=agent._react_chain if hasattr(agent, '_react_chain') else [],
+                    # Safely access attributes with getattr in case the agent crashed mid-initialization
+                    reflection_report=getattr(agent, '_reflection_report', None).model_dump() if getattr(agent, '_reflection_report', None) else {},
+                    react_chain=getattr(agent, '_react_chain', []),
                 )
             except Exception as e:
                 logger.error("Agent5 failed", error=str(e))
