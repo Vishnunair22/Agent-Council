@@ -16,6 +16,7 @@ from core.config import Settings
 from core.custody_logger import CustodyLogger
 from core.episodic_memory import EpisodicMemory
 from core.evidence import EvidenceArtifact
+from core.inter_agent_bus import InterAgentBus, InterAgentCall, InterAgentCallType
 from core.tool_registry import ToolRegistry
 from core.working_memory import WorkingMemory
 from infra.evidence_store import EvidenceStore

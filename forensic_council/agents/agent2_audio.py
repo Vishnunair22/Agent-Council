@@ -16,6 +16,7 @@ from core.config import Settings
 from core.custody_logger import CustodyLogger
 from core.episodic_memory import EpisodicMemory
 from core.evidence import EvidenceArtifact
+from core.inter_agent_bus import InterAgentBus, InterAgentCall, InterAgentCallType
 from core.tool_registry import ToolRegistry
 from core.working_memory import WorkingMemory
 from infra.evidence_store import EvidenceStore
@@ -144,11 +145,33 @@ class Agent2Audio(ForensicAgent):
             }
         
         async def inter_agent_call(input_data: dict) -> dict:
-            """Stub for inter-agent communication."""
+            """
+            Handle inter-agent communication to Agent4 (Video).
+            
+            Dispatches collaborative calls to Agent4 for flagged timestamps
+            that may have corresponding visual anomalies.
+            """
+            # Create inter-agent call
+            call = InterAgentCall(
+                caller_agent_id="Agent2_Audio",
+                callee_agent_id="Agent4_Video",
+                call_type=InterAgentCallType.COLLABORATIVE,
+                artifact_id=self.evidence_artifact.artifact_id,
+                payload={
+                    "timestamp_ref": input_data.get("timestamp_ref"),
+                    "region_ref": input_data.get("region_ref"),
+                    "context_finding": input_data.get("context_finding"),
+                    "question": input_data.get("question", "Please verify visual consistency at flagged timestamp"),
+                },
+            )
+            
+            # Return call info - actual dispatch happens via InterAgentBus
             return {
-                "status": "stub_response",
-                "tool": "inter_agent_call",
-                "note": "To be implemented in Stage 8",
+                "status": "call_prepared",
+                "call_id": str(call.call_id),
+                "callee": "Agent4_Video",
+                "call_type": "COLLABORATIVE",
+                "note": "Inter-agent call prepared for dispatch via InterAgentBus",
             }
         
         async def adversarial_robustness_check(input_data: dict) -> dict:

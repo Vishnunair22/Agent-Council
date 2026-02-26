@@ -17,6 +17,7 @@ from core.config import Settings
 from core.custody_logger import CustodyLogger, EntryType
 from core.episodic_memory import EpisodicMemory, EpisodicEntry, ForensicSignatureType
 from core.evidence import EvidenceArtifact
+from core.inter_agent_bus import InterAgentCall, InterAgentCallType
 from core.logging import get_logger
 from core.react_loop import (
     AgentFinding,
@@ -506,3 +507,70 @@ class ForensicAgent(ABC):
                 "brief": brief,
             }
         )
+    
+    async def handle_inter_agent_call(
+        self,
+        call: "InterAgentCall"
+    ) -> dict[str, Any]:
+        """
+        Handle an incoming inter-agent call.
+        
+        Default implementation: runs targeted sub-analysis based on call payload.
+        Subclasses can override for specialized handling.
+        
+        Args:
+            call: The inter-agent call request
+            
+        Returns:
+            Dictionary containing findings from the sub-analysis
+        """
+        logger.info(
+            "Handling inter-agent call",
+            agent_id=self.agent_id,
+            caller=call.caller_agent_id,
+            call_type=call.call_type.value,
+            call_id=str(call.call_id),
+        )
+        
+        # Log the incoming call
+        await self.custody_logger.log_entry(
+            agent_id=self.agent_id,
+            session_id=self.session_id,
+            entry_type=EntryType.INTER_AGENT_CALL,
+            content={
+                "action": "handle_inter_agent_call",
+                "call_id": str(call.call_id),
+                "caller_agent_id": call.caller_agent_id,
+                "call_type": call.call_type.value,
+                "payload": call.payload,
+            }
+        )
+        
+        # Default implementation: return a summary based on payload
+        # Subclasses should override this for specialized handling
+        response = {
+            "status": "acknowledged",
+            "agent_id": self.agent_id,
+            "agent_name": self.agent_name,
+            "findings": [],
+            "message": f"{self.agent_name} received call from {call.caller_agent_id}",
+        }
+        
+        # If payload contains specific analysis requests, handle them
+        if call.payload:
+            timestamp_ref = call.payload.get("timestamp_ref")
+            region_ref = call.payload.get("region_ref")
+            context_finding = call.payload.get("context_finding")
+            question = call.payload.get("question")
+            
+            if question:
+                response["question_received"] = question
+            
+            if context_finding:
+                response["context_received"] = context_finding
+            
+            # Subclasses should override to perform actual analysis
+            response["analysis_performed"] = False
+            response["note"] = "Subclass should override handle_inter_agent_call for actual analysis"
+        
+        return response
