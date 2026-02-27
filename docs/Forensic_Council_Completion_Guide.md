@@ -51,7 +51,7 @@ The frontend dev guide explicitly notes that `useSimulation.ts` and `useForensic
 Before starting, understand the final target structure:
 
 ```
-forensic_council/                    ← Python backend root
+backend/                    ← Python backend root
 ├── core/
 ├── infra/
 ├── agents/
@@ -167,7 +167,7 @@ git commit -m "Stage N complete — X tests passing"
 
 **After Stage 12, verify the full backend suite:**
 ```bash
-cd forensic_council
+cd backend
 docker compose up -d
 uv run pytest tests/ -v --cov=. --cov-report=term-missing
 ```
@@ -312,7 +312,7 @@ Use httpx.AsyncClient with the FastAPI test client.
 ### 13.2 — Test Gate
 
 ```bash
-cd forensic_council
+cd backend
 
 # Start the API server
 uv run python scripts/run_api.py &
@@ -507,7 +507,7 @@ npm run build
 npm run dev &
 
 # Start backend in a separate terminal
-cd ../forensic_council
+cd ../backend
 docker compose up -d
 uv run python scripts/run_api.py &
 
@@ -653,7 +653,7 @@ Mark all existing tests appropriately:
 
 **Test Gate:**
 ```bash
-cd forensic_council
+cd backend
 
 # Run unit tests only (fast — no inference)
 uv run pytest tests/ -m "unit" -v --tb=short
@@ -837,7 +837,7 @@ echo -e "\n${YELLOW}[8/8] Verifying frontend build...${NC}"
 cd ../agent-council-front-end
 npm run build 2>&1 | tail -5
 echo -e "${GREEN}Frontend build passed${NC}"
-cd ../forensic_council
+cd ../backend
 
 # Cleanup
 kill $API_PID 2>/dev/null
@@ -847,7 +847,7 @@ echo -e "\n${GREEN}=== ALL SMOKE TESTS PASSED — Application is ready to run ==
 
 **Run the smoke test:**
 ```bash
-cd forensic_council
+cd backend
 bash scripts/smoke_test.sh
 ```
 
@@ -860,7 +860,7 @@ Once all stages are complete and the smoke test passes, this is the full run pro
 ### Terminal 1 — Infrastructure
 
 ```bash
-cd forensic_council
+cd backend
 docker compose up -d
 
 # Verify all healthy
@@ -870,7 +870,7 @@ docker compose ps
 ### Terminal 2 — Backend API Server
 
 ```bash
-cd forensic_council
+cd backend
 uv run python scripts/run_api.py
 ```
 

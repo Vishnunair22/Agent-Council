@@ -4,7 +4,7 @@
 import os
 import sys
 
-# Change to forensic_council directory
+# Change to backend directory
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 from PIL import Image, ImageDraw

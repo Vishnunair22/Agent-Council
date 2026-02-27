@@ -47,7 +47,7 @@ Forensic Council analyzes digital evidence through a structured ReAct reasoning 
 
 1. **Clone the repository**
    ```bash
-   cd forensic_council
+   cd backend
    ```
 
 2. **Install dependencies**
@@ -79,7 +79,7 @@ Forensic Council analyzes digital evidence through a structured ReAct reasoning 
 ## Project Structure
 
 ```
-forensic_council/
+backend/
 ├── core/                   # Core modules
 │   ├── config.py          # Configuration management
 │   ├── logging.py         # Structured JSON logging

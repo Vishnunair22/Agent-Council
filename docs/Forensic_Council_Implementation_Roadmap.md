@@ -26,7 +26,7 @@ This roadmap is structured as a sequence of **Kilo Code task prompts**. Each sta
 
 All stages build inside one project folder:
 ```
-mkdir forensic_council && cd forensic_council
+mkdir forensic_council && cd backend
 git init
 code .     ← opens VS Code with Kilo Code
 ```
@@ -40,7 +40,7 @@ code .     ← opens VS Code with Kilo Code
 ```
 Create a Python project called forensic_council with the following structure:
 
-forensic_council/
+backend/
 ├── pyproject.toml          (uv-managed, Python 3.11)
 ├── docker-compose.yml      (Redis, Qdrant, PostgreSQL services)
 ├── .env.example            (all env vars templated, no real values)

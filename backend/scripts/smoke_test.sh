@@ -57,7 +57,7 @@ echo -e "\n${YELLOW}[8/8] Verifying frontend build...${NC}"
 cd ../frontend
 npm run build 2>&1 | tail -5 || echo -e "${YELLOW}Note: Frontend build may have warnings. Continuing...${NC}"
 echo -e "${GREEN}Frontend build passed${NC}"
-cd ../forensic_council
+cd ../backend
 
 # Cleanup
 kill $API_PID 2>/dev/null || true
